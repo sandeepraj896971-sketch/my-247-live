@@ -1,23 +1,20 @@
-name: StudiesDream 24/7 Live
+name: StudiesDream 6H Live
+
 on:
   workflow_dispatch:
-  schedule:
-    - cron: '0 */5 * * *'
+    inputs:
+      video_url:
+        description: 'Video ka Link'
+        required: true
+      stream_key:
+        description: 'YouTube Stream Key'
+        required: true
 
 jobs:
   live:
     runs-on: ubuntu-latest
-    timeout-minutes: 350
     steps:
-      - name: Install Tools
+      - name: Run 6 Hour Live
         run: |
-          sudo apt-get update && sudo apt-get install -y ffmpeg
-          pip install gdown
-
-      - name: Download Video from Drive
-        run: |
-          gdown https://drive.google.com/uc?id=1N7hMMHQE3sdJ7ME8gVnm8elbF2VR-xE7 -O video.mp4
-
-      - name: Start 24/7 Stream
-        run: |
-          ffmpeg -re -stream_loop -1 -i video.mp4 -c:v libx264 -preset veryfast -maxrate 2500k -bufsize 5000k -vf "scale=1280:720" -g 60 -c:a aac -b:a 128k -ar 44100 -f flv rtmp://a.rtmp.youtube.com/live2/${{ secrets.YT_KEY }}
+          sudo apt update && sudo apt install -y ffmpeg
+          ffmpeg -re -stream_loop 24 -i "${{ inputs.video_url }}" -c:v libx264 -preset veryfast -maxrate 3000k -bufsize 6000k -pix_fmt yuv420p -g 50 -c:a aac -b:a 128k -ar 44100 -f flv rtmp://a.rtmp.youtube.com/live2/${{ inputs.stream_key }}
