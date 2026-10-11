@@ -18,17 +18,16 @@ jobs:
       - name: Install Tools
         run: |
           sudo apt update && sudo apt install -y ffmpeg
-          pip install -U gdown
+          pip install --upgrade --no-cache-dir gdown
 
       - name: Download Video from Drive
         run: |
-          echo "Downloading: ${{ inputs.video_url }}"
-          gdown --fuzzy "${{ inputs.video_url }}" -O video.mp4
-          ls -lh
-          echo "File type:"
+          echo "Link: ${{ inputs.video_url }}"
+          FILE_ID=$(echo "${{ inputs.video_url }}" | grep -oE '[a-zA-Z0-9_-]{25,}' | tail -1)
+          echo "Extracted ID: $FILE_ID"
+          gdown --id $FILE_ID -O video.mp4
+          ls -lh video.mp4
           file video.mp4
-          echo "First 100 chars:"
-          head -c 500 video.mp4
 
       - name: Run 6 Hour Live
         run: |
