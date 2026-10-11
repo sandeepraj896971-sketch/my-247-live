@@ -13,8 +13,19 @@ on:
 jobs:
   live:
     runs-on: ubuntu-latest
+    timeout-minutes: 360
     steps:
-      - name: Run 6 Hour Live
+      - name: Install Tools
         run: |
           sudo apt update && sudo apt install -y ffmpeg
-          ffmpeg -re -stream_loop 24 -i "${{ inputs.video_url }}" -c:v libx264 -preset veryfast -maxrate 3000k -bufsize 6000k -pix_fmt yuv420p -g 50 -c:a aac -b:a 128k -ar 44100 -f flv rtmp://a.rtmp.youtube.com/live2/${{ inputs.stream_key }}
+          pip install gdown
+
+      - name: Download Video from Drive
+        run: |
+          FILE_ID=$(echo "${{ inputs.video_url }}" | grep -oP '(?<=/d/)[^/]+|(?<=id=)[^&]+' | head -1)
+          echo "File ID: $FILE_ID"
+          gdown --id $FILE_ID -O video.mp4 || wget -O video.mp4 "${{ inputs.video_url }}"
+
+      - name: Run 6 Hour Live
+        run: |
+          ffmpeg -re -stream_loop 24 -i video.mp4 -c:v libx264 -preset veryfast -maxrate 3000k -bufsize 6000k -pix_fmt yuv420p -g 50 -c:a aac -b:a 128k -ar 44100 -f flv rtmp://a.rtmp.youtube.com/live2/${{ inputs.stream_key }}
