@@ -3,13 +3,21 @@ on:
   workflow_dispatch:
   schedule:
     - cron: '0 */5 * * *'
+
 jobs:
   live:
     runs-on: ubuntu-latest
     timeout-minutes: 350
     steps:
-      - name: Install FFmpeg
-        run: sudo apt-get update && sudo apt-get install -y ffmpeg
-      - name: Start Stream
+      - name: Install Tools
         run: |
-          ffmpeg -re -stream_loop -1 -i "${{ secrets.VIDEO_URL }}" -c:v libx264 -preset veryfast -maxrate 2500k -bufsize 5000k -vf "scale=1280:720" -g 60 -c:a aac -b:a 128k -ar 44100 -f flv rtmp://a.rtmp.youtube.com/live2/${{ secrets.YT_KEY }}
+          sudo apt-get update && sudo apt-get install -y ffmpeg
+          pip install gdown
+
+      - name: Download Video from Drive
+        run: |
+          gdown https://drive.google.com/uc?id=1N7hMMHQE3sdJ7ME8gVnm8elbF2VR-xE7 -O video.mp4
+
+      - name: Start 24/7 Stream
+        run: |
+          ffmpeg -re -stream_loop -1 -i video.mp4 -c:v libx264 -preset veryfast -maxrate 2500k -bufsize 5000k -vf "scale=1280:720" -g 60 -c:a aac -b:a 128k -ar 44100 -f flv rtmp://a.rtmp.youtube.com/live2/${{ secrets.YT_KEY }}
