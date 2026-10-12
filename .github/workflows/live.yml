@@ -1,33 +1,50 @@
-name: StudiesDream 6H Live
-
+name: 24x7 Live
 on:
   workflow_dispatch:
     inputs:
-      video_url:
-        description: 'Video ka Link'
-        required: true
-      stream_key:
-        description: 'YouTube Stream Key'
-        required: true
+      video_url: { description: 'Drive Video Link', required: true, type: string }
+      yt_key: { description: 'YouTube Key', required: false, type: string }
+      fb_key: { description: 'Facebook Key', required: false, type: string }
+      platform: { description: 'Platform', required: true, default: 'youtube', type: choice, options: [youtube, facebook, both] }
+      duration: { description: 'Duration Hours', required: true, default: '6', type: string }
+      quality: { description: 'Quality', required: true, default: '720p', type: string }
 
 jobs:
   live:
     runs-on: ubuntu-latest
-    timeout-minutes: 360
     steps:
-      - name: Install Tools
+      - name: Setup FFMPEG
+        run: sudo apt update && sudo apt install -y ffmpeg
+        
+      - name: Download Video
         run: |
-          sudo apt update && sudo apt install -y ffmpeg
-          pip3 install -q --upgrade gdown
-
-      - name: Download Video from Drive
+          FILE_ID=$(echo "${{ inputs.video_url }}" | grep -oP '(?<=/d/)[^/]+' || echo "${{ inputs.video_url }}" | grep -oP '(?<=id=)[^&]+' || echo "")
+          if [ -n "$FILE_ID" ]; then
+            gdown "https://drive.google.com/uc?id=$FILE_ID" -O video.mp4 || wget -O video.mp4 "https://drive.google.com/uc?export=download&id=$FILE_ID"
+          else
+            wget -O video.mp4 "${{ inputs.video_url }}"
+          fi
+          
+      - name: Start Live Stream
         run: |
-          echo "Link: ${{ inputs.video_url }}"
-          FILE_ID="1N7hMMHQE3sdJ7ME8gVnm8elbF2VR-xE7"
-          echo "File ID: $FILE_ID"
-          gdown $FILE_ID -O video.mp4
-          ls -lh video.mp4
-
-      - name: Run 6 Hour Live
+          DUR="${{ inputs.duration }}"
+          if [ "$DUR" = "infinite" ]; then DUR_SEC=21000; else DUR_SEC=$(($DUR * 3600)); fi
+          RES="1280:720"
+          if [ "${{ inputs.quality }}" = "1080p" ]; then RES="1920:1080"; fi
+          if [ "${{ inputs.quality }}" = "480p" ]; then RES="854:480"; fi
+          
+          echo "Starting $DUR hours Live on ${{ inputs.platform }} with $RES"
+          
+          if [ "${{ inputs.platform }}" = "youtube" ] || [ "${{ inputs.platform }}" = "both" ]; then
+            timeout $DUR_SEC ffmpeg -re -stream_loop -1 -i video.mp4 -c:v libx264 -preset veryfast -b:v 2500k -maxrate 2500k -bufsize 5000k -vf "scale=$RES" -c:a aac -b:a 128k -f flv rtmp://a.rtmp.youtube.com/live2/${{ inputs.yt_key }} &
+          fi
+          if [ "${{ inputs.platform }}" = "facebook" ] || [ "${{ inputs.platform }}" = "both" ]; then
+            timeout $DUR_SEC ffmpeg -re -stream_loop -1 -i video.mp4 -c:v libx264 -preset veryfast -b:v 2500k -maxrate 2500k -bufsize 5000k -vf "scale=$RES" -c:a aac -b:a 128k -f flv rtmps://live-api-s.facebook.com:443/rtmp/${{ inputs.fb_key }} &
+          fi
+          wait
+          
+      - name: Auto Restart if Infinite
+        if: ${{ inputs.duration == 'infinite' }}
         run: |
-          ffmpeg -re -stream_loop 24 -i video.mp4 -c:v libx264 -preset veryfast -maxrate 3000k -bufsize 6000k -pix_fmt yuv420p -g 50 -c:a aac -b:a 128k -ar 44100 -f flv rtmp://a.rtmp.youtube.com/live2/${{ inputs.stream_key }}
+          sleep 20
+          curl -X POST -H "Authorization: token ${{ secrets.PAT_TOKEN }}" -H "Accept: application/vnd.github.v3+json" https://api.github.com/repos/${{ github.repository }}/actions/workflows/live.yml/dispatches -d "{\"ref\":\"main\",\"inputs\":{\"video_url\":\"${{ inputs.video_url }}\",\"yt_key\":\"${{ inputs.yt_key }}\",\"fb_key\":\"${{ inputs.fb_key }}\",\"platform\":\"${{ inputs.platform }}\",\"duration\":\"infinite\",\"quality\":\"${{ inputs.quality }}\"}}"
