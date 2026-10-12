@@ -8,43 +8,39 @@ on:
       platform: { description: 'Platform', required: true, default: 'youtube', type: choice, options: [youtube, facebook, both] }
       duration: { description: 'Duration Hours', required: true, default: '6', type: string }
       quality: { description: 'Quality', required: true, default: '720p', type: string }
-
 jobs:
   live:
     runs-on: ubuntu-latest
     steps:
-      - name: Setup FFMPEG
-        run: sudo apt update && sudo apt install -y ffmpeg
-        
+      - name: Setup
+        run: |
+          sudo apt update && sudo apt install -y ffmpeg
+          pip install gdown
       - name: Download Video
         run: |
-          FILE_ID=$(echo "${{ inputs.video_url }}" | grep -oP '(?<=/d/)[^/]+' || echo "${{ inputs.video_url }}" | grep -oP '(?<=id=)[^&]+' || echo "")
-          if [ -n "$FILE_ID" ]; then
-            gdown "https://drive.google.com/uc?id=$FILE_ID" -O video.mp4 || wget -O video.mp4 "https://drive.google.com/uc?export=download&id=$FILE_ID"
-          else
-            wget -O video.mp4 "${{ inputs.video_url }}"
-          fi
-          
-      - name: Start Live Stream
+          FILE_ID=$(echo "${{ inputs.video_url }}" | grep -oP '(?<=/d/)[^/]+' | head -1)
+          if [ -z "$FILE_ID" ]; then FILE_ID=$(echo "${{ inputs.video_url }}" | grep -oP '(?<=id=)[^&]+' | head -1); fi
+          echo "File ID: $FILE_ID"
+          if [ -n "$FILE_ID" ]; then gdown --fuzzy "${{ inputs.video_url }}" -O video.mp4 || gdown "https://drive.google.com/uc?id=$FILE_ID" -O video.mp4; else wget -O video.mp4 "${{ inputs.video_url }}"; fi
+          ls -lh video.mp4
+      - name: Start Live
         run: |
           DUR="${{ inputs.duration }}"
-          if [ "$DUR" = "infinite" ]; then DUR_SEC=21000; else DUR_SEC=$(($DUR * 3600)); fi
-          RES="1280:720"
-          if [ "${{ inputs.quality }}" = "1080p" ]; then RES="1920:1080"; fi
+          if [ "$DUR" = "infinite" ]; then DUR_SEC=21400; else DUR_SEC=$(($DUR * 3600)); fi
+          RES="1280:720"; if [ "${{ inputs.quality }}" = "1080p" ]; then RES="1920:1080"; fi
           if [ "${{ inputs.quality }}" = "480p" ]; then RES="854:480"; fi
-          
-          echo "Starting $DUR hours Live on ${{ inputs.platform }} with $RES"
-          
+          echo "Live for $DUR_SEC seconds on ${{ inputs.platform }}"
           if [ "${{ inputs.platform }}" = "youtube" ] || [ "${{ inputs.platform }}" = "both" ]; then
-            timeout $DUR_SEC ffmpeg -re -stream_loop -1 -i video.mp4 -c:v libx264 -preset veryfast -b:v 2500k -maxrate 2500k -bufsize 5000k -vf "scale=$RES" -c:a aac -b:a 128k -f flv rtmp://a.rtmp.youtube.com/live2/${{ inputs.yt_key }} &
+            timeout $DUR_SEC ffmpeg -re -stream_loop -1 -i video.mp4 -c:v libx264 -preset veryfast -b:v 2500k -maxrate 2500k -bufsize 5000k -vf "scale=$RES" -g 60 -c:a aac -b:a 128k -f flv rtmp://a.rtmp.youtube.com/live2/${{ inputs.yt_key }} &
+            P1=$!
           fi
           if [ "${{ inputs.platform }}" = "facebook" ] || [ "${{ inputs.platform }}" = "both" ]; then
-            timeout $DUR_SEC ffmpeg -re -stream_loop -1 -i video.mp4 -c:v libx264 -preset veryfast -b:v 2500k -maxrate 2500k -bufsize 5000k -vf "scale=$RES" -c:a aac -b:a 128k -f flv rtmps://live-api-s.facebook.com:443/rtmp/${{ inputs.fb_key }} &
+            timeout $DUR_SEC ffmpeg -re -stream_loop -1 -i video.mp4 -c:v libx264 -preset veryfast -b:v 2500k -maxrate 2500k -bufsize 5000k -vf "scale=$RES" -g 60 -c:a aac -b:a 128k -f flv rtmps://live-api-s.facebook.com:443/rtmp/${{ inputs.fb_key }} &
+            P2=$!
           fi
-          wait
-          
-      - name: Auto Restart if Infinite
+          wait $P1 $P2
+      - name: Auto Restart
         if: ${{ inputs.duration == 'infinite' }}
         run: |
-          sleep 20
+          sleep 15
           curl -X POST -H "Authorization: token ${{ secrets.PAT_TOKEN }}" -H "Accept: application/vnd.github.v3+json" https://api.github.com/repos/${{ github.repository }}/actions/workflows/live.yml/dispatches -d "{\"ref\":\"main\",\"inputs\":{\"video_url\":\"${{ inputs.video_url }}\",\"yt_key\":\"${{ inputs.yt_key }}\",\"fb_key\":\"${{ inputs.fb_key }}\",\"platform\":\"${{ inputs.platform }}\",\"duration\":\"infinite\",\"quality\":\"${{ inputs.quality }}\"}}"
