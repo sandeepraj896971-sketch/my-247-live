@@ -88,7 +88,6 @@ jobs:
           STREAM_KEY: ${{ matrix.key }}
           HOURS: ${{ inputs.duration_hours }}
         run: |
-          # Hours ko seconds me convert karna (thoda buffer rakh kar)
           DURATION_SEC=$(( HOURS * 3580 ))
 
           if [ "${{ matrix.platform }}" == "facebook" ]; then
